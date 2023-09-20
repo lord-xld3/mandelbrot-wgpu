@@ -32,7 +32,7 @@
   <link rel="apple-touch-icon" sizes="144x144" href="static/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="static/favicon-16x16.png">
-  <link rel="manifest" href="site.webmanifest">
+  <link rel="manifest" href="/manifest.json">
   <link rel="mask-icon" href="static/safari-pinned-tab.svg" color="#5bbad5">
   <meta name="msapplication-TileColor" content="#da532c">
   <meta name="theme-color" content="#ffffff">
@@ -87,5 +87,19 @@
   </div>
   <div id="leaflet-map"></div>
 </body>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then((registration) => {
+          console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
+    });
+  }
+</script>
+
 
 </html>

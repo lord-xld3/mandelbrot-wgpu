@@ -1,0 +1,16 @@
+{
+  "name": "Mandelbrot Set Explorer",
+  "short_name": "Mandelbrot",
+  "description": "PWA built in Rust with WebAssembly, explore and save images of the Mandelbrot set.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007bff",
+  "icons": [
+    {
+      "src": "/static/android-chrome-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    }
+  ]
+}

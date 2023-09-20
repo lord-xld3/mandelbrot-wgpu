@@ -1,16 +1,21 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const dist = path.resolve(__dirname, "dist");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
 const appConfig = {
-  entry: "./app/main.ts",
-  mode: "development",
+  entry: {
+    app: "./app/main.ts", // Entry for app
+    "service-worker": "./service-worker.js", // Entry for service worker
+  },
+  //mode: "development",
   plugins: [
     new HtmlWebpackPlugin({ template: "index.html", root: path.resolve(__dirname, '.') }),
-    new MiniCssExtractPlugin()
+    new MiniCssExtractPlugin({ filename: 'main.css' }), // Can't fetch main.css from service worker without this
+    new CopyWebpackPlugin({ patterns: [{ from: 'manifest.json', to: 'manifest.json' }] })
   ],
   module: {
     rules: [
@@ -39,7 +44,10 @@ const appConfig = {
   resolve: {
     extensions: [".ts", ".js"]
   },
-  output: { path: dist, filename: "app.js" },
+  output: {
+    path: dist,
+    filename: "[name].js", // Use a placeholder for dynamic filenames
+  },  
   optimization: {
     minimize: true,
     minimizer: [new TerserPlugin()],
@@ -48,7 +56,7 @@ const appConfig = {
 
 const workerConfig = {
   entry: "./app/worker.js",
-  mode: 'development',
+  //mode: 'development',
   target: "webworker",
   plugins: [new WasmPackPlugin({ crateDirectory: path.resolve(__dirname, "../mandelbrot") })],
   resolve: {
