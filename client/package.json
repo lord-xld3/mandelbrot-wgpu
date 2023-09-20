@@ -5,7 +5,7 @@
   "repository": "https://github.com/rosslh/Rust-Fractals",
   "license": "Apache-2.0/MIT",
   "scripts": {
-    "start": "webpack-dev-server -d --port 9090",
+    "start": "webpack-dev-server --port 9090",
     "build": "webpack --mode production",
     "lint": "eslint . --ignore-path ../.gitignore && cargo clippy",
     "test": "cargo test"

@@ -6,7 +6,7 @@ const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
 const appConfig = {
   entry: "./app/main.ts",
-  devServer: { contentBase: dist },
+  mode: "development",
   plugins: [
     new HtmlWebpackPlugin({ template: "index.html", root: path.resolve(__dirname, '.') }),
     new MiniCssExtractPlugin()
@@ -43,6 +43,7 @@ const appConfig = {
 
 const workerConfig = {
   entry: "./app/worker.js",
+  mode: 'development',
   target: "webworker",
   plugins: [new WasmPackPlugin({ crateDirectory: path.resolve(__dirname, "../mandelbrot") })],
   resolve: {
