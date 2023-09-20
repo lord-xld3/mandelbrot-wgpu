@@ -7,6 +7,7 @@ mod lib_test;
 use itertools_num::linspace;
 use num::complex::Complex64;
 use wasm_bindgen::prelude::*;
+use std::time::{Duration, Instant};
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator.
 #[cfg(feature = "wee_alloc")]
