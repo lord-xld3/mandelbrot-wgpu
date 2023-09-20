@@ -1,6 +1,7 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
 const dist = path.resolve(__dirname, "dist");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
@@ -38,7 +39,11 @@ const appConfig = {
   resolve: {
     extensions: [".ts", ".js"]
   },
-  output: { path: dist, filename: "app.js" }
+  output: { path: dist, filename: "app.js" },
+  optimization: {
+    minimize: true,
+    minimizer: [new TerserPlugin()],
+  }
 };
 
 const workerConfig = {
@@ -52,7 +57,11 @@ const workerConfig = {
   },
   output: { path: dist, filename: "worker.js" },
   //[DDR 2020-11-20] asyncWebAssembly is broken by webpack 5. (See https://github.com/rustwasm/wasm-bindgen/issues/2343)
-  experiments: { syncWebAssembly: true }
+  experiments: { syncWebAssembly: true },
+  optimization: {
+    minimize: true,
+    minimizer: [new TerserPlugin()],
+  }
 };
 
 module.exports = [appConfig, workerConfig];
