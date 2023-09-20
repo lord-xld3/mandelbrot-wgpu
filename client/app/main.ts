@@ -73,6 +73,7 @@ function handleInputs(map: RefreshableMap) {
 
   const saveBtn = document.getElementById("save-image");
   try {
+    // eslint-disable-next-line no-constant-condition
     if (new Blob) saveBtn.onclick = () => saveImage(map);
     else throw "FileSaver not supported";
   } catch (e) {

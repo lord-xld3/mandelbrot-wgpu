@@ -11,7 +11,7 @@ const appConfig = {
     app: "./app/main.ts", // Entry for app
     "service-worker": "./service-worker.js", // Entry for service worker
   },
-  //mode: "development",
+  mode: "development",
   plugins: [
     new HtmlWebpackPlugin({ template: "index.html", root: path.resolve(__dirname, '.') }),
     new MiniCssExtractPlugin({ filename: 'main.css' }), // Can't fetch main.css from service worker without this
@@ -56,7 +56,7 @@ const appConfig = {
 
 const workerConfig = {
   entry: "./app/worker.js",
-  //mode: 'development',
+  mode: 'development',
   target: "webworker",
   plugins: [new WasmPackPlugin({ crateDirectory: path.resolve(__dirname, "../mandelbrot") })],
   resolve: {
