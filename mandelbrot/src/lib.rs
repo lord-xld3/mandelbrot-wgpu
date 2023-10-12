@@ -22,7 +22,7 @@ fn get_escape_iterations(
     escape_radius: f64,
     exponent: u32,
 ) -> (u32, Complex64) {
-    let c: Complex64 = Complex64::new(x, y);
+    let c: Complex64 = Complex64::new(x, y); // complex64 is a list of float64
     let mut z: Complex64 = c;
 
     let mut iter: u32 = 0;
@@ -43,18 +43,27 @@ fn rect_in_set(
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-) -> bool {
+) -> Option<u32> {
+    // Find a single pixel and store its iterations value
+    let reference_pixel = get_escape_iterations(
+        re_range.clone().next().unwrap(),
+        im_range.clone().next().unwrap(),
+        max_iterations,
+        escape_radius,
+        exponent,
+    ).0;
+
     // horizontal
     let top = im_range.clone().next().unwrap();
     let bottom = im_range.clone().last().unwrap();
     for re in re_range.clone() {
         let top_in_set = get_escape_iterations(re, top, max_iterations, escape_radius, exponent).0
-            == max_iterations;
+            == reference_pixel;
         let bottom_in_set =
             get_escape_iterations(re, bottom, max_iterations, escape_radius, exponent).0
-                == max_iterations;
+                == reference_pixel;
         if !top_in_set || !bottom_in_set {
-            return false;
+            return None;
         }
     }
 
@@ -64,16 +73,17 @@ fn rect_in_set(
     for im in im_range.clone() {
         let left_in_set =
             get_escape_iterations(left, im, max_iterations, escape_radius, exponent).0
-                == max_iterations;
+                == reference_pixel;
         let right_in_set =
             get_escape_iterations(right, im, max_iterations, escape_radius, exponent).0
-                == max_iterations;
+                == reference_pixel;
         if !left_in_set || !right_in_set {
-            return false;
+            return None;
         }
     }
 
-    true
+    // The entire rectangle is in the set
+    Some(reference_pixel)
 }
 
 // map leaflet coordinates to complex plane
@@ -127,7 +137,8 @@ pub fn get_tile(
         max_iterations,
         escape_radius,
         exponent,
-    ) {
+    ).is_some() {
+        // Do something if the rectangle is in the set
         return rgba_black
             .iter()
             .cycle() // repeat black pixel
@@ -135,6 +146,7 @@ pub fn get_tile(
             .cloned()
             .collect(); // output expected image size
     }
+    
 
     for (x, im) in enumerated_im_range {
         for (y, re) in enumerated_re_range.clone() {
