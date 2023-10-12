@@ -106,21 +106,28 @@ pub fn get_tile(
         escape_radius,
         exponent,
     );
-
-    let mut check_closure = |x, y| {
-        check_range(ref_iter, x, y, max_iterations, escape_radius, exponent, &mut mask)
+    
+    let all_true = {
+        let im_start = vec![im_range[0]];
+        let im_end = vec![im_range[im_range.len() - 1]];
+        let re_start = vec![re_range[0]];
+        let re_end = vec![re_range[re_range.len() - 1]];
+    
+        let result = {
+            
+            let mut check_closure = |x, y| {
+                check_range(ref_iter, x, y, max_iterations, escape_radius, exponent, &mut mask)
+            };
+    
+            check_closure(&re_range, &im_start) && // top
+            check_closure(&re_range, &im_end) &&   // bottom
+            check_closure(&re_start, &im_range) && // left
+            check_closure(&re_end, &im_range)      // right
+        };
+        
+        result
     };
     
-    let im_start = vec![im_range[0]];
-    let im_end = vec![im_range[im_range.len() - 1]];
-    let re_start = vec![re_range[0]];
-    let re_end = vec![re_range[re_range.len() - 1]];
-    
-    let all_true =
-        check_closure(&re_range, &im_start) // top
-        && check_closure(&re_range, &im_end) // bottom
-        && check_closure(&re_start, &im_range) // left
-        && check_closure(&re_end, &im_range); // right
 
     if all_true {
         for (x, _im) in im_range.iter().enumerate() {
