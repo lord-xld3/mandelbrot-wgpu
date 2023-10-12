@@ -7,7 +7,6 @@ mod lib_test;
 use itertools_num::linspace;
 use num::complex::Complex64;
 use wasm_bindgen::prelude::*;
-use std::time::{Duration, Instant};
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator.
 #[cfg(feature = "wee_alloc")]
@@ -22,7 +21,7 @@ fn get_escape_iterations(
     escape_radius: f64,
     exponent: u32,
 ) -> (u32, Complex64) {
-    let c: Complex64 = Complex64::new(x, y); // complex64 is a list of float64
+    let c: Complex64 = Complex64::new(x, y); // complex64 is a tuple[f64, f64]
     let mut z: Complex64 = c;
 
     let mut iter: u32 = 0;
@@ -35,55 +34,23 @@ fn get_escape_iterations(
     (iter, z)
 }
 
-// Mandelbrot set is simply connected.
-// So if the border of the rectangle is in the set, we know the rest of it is too.
-fn rect_in_set(
-    re_range: itertools_num::Linspace<f64>,
-    im_range: itertools_num::Linspace<f64>,
+fn check_border<I>(
+    reference_pixel: u32,
+    range: I,
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-) -> Option<u32> {
-    // Find a single pixel and store its iterations value
-    let reference_pixel = get_escape_iterations(
-        re_range.clone().next().unwrap(),
-        im_range.clone().next().unwrap(),
-        max_iterations,
-        escape_radius,
-        exponent,
-    ).0;
-
-    // horizontal
-    let top = im_range.clone().next().unwrap();
-    let bottom = im_range.clone().last().unwrap();
-    for re in re_range.clone() {
-        let top_in_set = get_escape_iterations(re, top, max_iterations, escape_radius, exponent).0
+) -> bool 
+where I: Iterator<Item = (f64, f64)>
+{
+    for pixel in range {
+        let in_set = get_escape_iterations(pixel.0, pixel.1, max_iterations, escape_radius, exponent).0
             == reference_pixel;
-        let bottom_in_set =
-            get_escape_iterations(re, bottom, max_iterations, escape_radius, exponent).0
-                == reference_pixel;
-        if !top_in_set || !bottom_in_set {
-            return None;
+        if !in_set {
+            return false;
         }
     }
-
-    // vertical
-    let left = re_range.clone().next().unwrap();
-    let right = re_range.last().unwrap();
-    for im in im_range.clone() {
-        let left_in_set =
-            get_escape_iterations(left, im, max_iterations, escape_radius, exponent).0
-                == reference_pixel;
-        let right_in_set =
-            get_escape_iterations(right, im, max_iterations, escape_radius, exponent).0
-                == reference_pixel;
-        if !left_in_set || !right_in_set {
-            return None;
-        }
-    }
-
-    // The entire rectangle is in the set
-    Some(reference_pixel)
+    true
 }
 
 // map leaflet coordinates to complex plane
@@ -118,10 +85,8 @@ pub fn get_tile(
     let (re_min, im_min) = map_coordinates(center_x, center_y, z, image_side_length);
     let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, image_side_length);
 
-    let re_range = linspace(re_min, re_max, image_side_length);
-    let im_range = linspace(im_min, im_max, image_side_length);
-    let enumerated_re_range = re_range.clone().enumerate();
-    let enumerated_im_range = im_range.clone().enumerate();
+    let mut re_range = linspace(re_min, re_max, image_side_length);
+    let mut im_range = linspace(im_min, im_max, image_side_length);
 
     let palette_scale_factor = 20.0;
     let scaled_max_iterations = (max_iterations * palette_scale_factor as u32) as usize;
@@ -131,47 +96,36 @@ pub fn get_tile(
     // radius has to be >=3 for color smoothing
     let escape_radius = 3.0;
 
-    if rect_in_set(
-        re_range,
-        im_range,
+    // Clone the ranges to get the top-left pixel as a reference
+    let (reference_pixel, _) = get_escape_iterations(
+        re_range.clone().next().unwrap(),
+        im_range.clone().next().unwrap(),
         max_iterations,
         escape_radius,
         exponent,
-    ).is_some() {
-        // Do something if the rectangle is in the set
-        return rgba_black
-            .iter()
-            .cycle() // repeat black pixel
-            .take(output_size)
-            .cloned()
-            .collect(); // output expected image size
-    }
-    
+    );
 
-    for (x, im) in enumerated_im_range {
-        for (y, re) in enumerated_re_range.clone() {
-            let (escape_iterations, z) =
-                get_escape_iterations(re, im, max_iterations, escape_radius, exponent);
+    let borders: Vec<Box<dyn Iterator<Item = (f64, f64)>>> = vec![
+        Box::new(re_range.clone().zip(im_range.clone().cycle().take(1))), // Top
+        Box::new(re_range.clone().zip(im_range.clone().rev().cycle().take(1))), // Bottom
+        Box::new(re_range.clone().cycle().take(1).zip(im_range.clone())), // Left
+        Box::new(re_range.clone().rev().cycle().take(1).zip(im_range.clone())), //Right
+    ];
 
-            let pixel: [u8; 3] = if escape_iterations == max_iterations {
-                rgb_black
-            } else {
-                // See: https://www.iquilezles.org/www/articles/mset_smooth/mset_smooth.htm
-                let smoothed_value = f64::from(escape_iterations)
-                    - ((z.norm().ln() / escape_radius.ln()).ln() / f64::from(exponent).ln());
-                // more colors to reduce banding
-                let scaled_value = (smoothed_value * palette_scale_factor) as usize;
-                let color = palette.eval_rational(scaled_value, scaled_max_iterations);
+    let all_true = borders.into_iter().all(|border| {
+        check_border(reference_pixel, border, max_iterations, escape_radius, exponent)
+    });
 
-                color.as_array()
-            };
-
-            // index = ((current row * row length) + current column) * 4 to fit r,g,b,a values
-            let index = (x * image_side_length + y) * NUM_COLOR_CHANNELS;
-            img[index] = pixel[0]; // r
-            img[index + 1] = pixel[1]; // g
-            img[index + 2] = pixel[2]; // b
-            img[index + 3] = max_channel_value; // a
+    if all_true {
+        // Color the whole tile using reference_pixel
+        todo!()
+    } else {
+        let mut rect_width = image_side_length;
+        let mut rect_height = image_side_length;
+        while rect_width > 3 && rect_height > 3 {
+            if rect_width >= rect_height {
+                
+            }
         }
     }
 
