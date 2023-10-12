@@ -35,7 +35,7 @@ fn get_escape_iterations(
 }
 
 fn check_border<I>(
-    reference_pixel: u32,
+    ref_iter: u32,
     range: I,
     max_iterations: u32,
     escape_radius: f64,
@@ -45,7 +45,7 @@ where I: Iterator<Item = (f64, f64)>
 {
     for pixel in range {
         let in_set = get_escape_iterations(pixel.0, pixel.1, max_iterations, escape_radius, exponent).0
-            == reference_pixel;
+            == ref_iter;
         if !in_set {
             return false;
         }
@@ -97,7 +97,7 @@ pub fn get_tile(
     let escape_radius = 3.0;
 
     // Clone the ranges to get the top-left pixel as a reference
-    let (reference_pixel, _) = get_escape_iterations(
+    let (ref_iter, ref_complex) = get_escape_iterations(
         re_range.clone().next().unwrap(),
         im_range.clone().next().unwrap(),
         max_iterations,
@@ -113,18 +113,37 @@ pub fn get_tile(
     ];
 
     let all_true = borders.into_iter().all(|border| {
-        check_border(reference_pixel, border, max_iterations, escape_radius, exponent)
+        check_border(ref_iter, border, max_iterations, escape_radius, exponent)
     });
 
     if all_true {
-        // Color the whole tile using reference_pixel
-        todo!()
+        for (x, im) in im_range.enumerate() {
+            for (y, re) in re_range.clone().enumerate() {
+                let pixel:[u8; 3];
+                {
+                    // See: https://www.iquilezles.org/www/articles/mset_smooth/mset_smooth.htm
+                    let smoothed_value = f64::from(ref_iter)
+                        - ((ref_complex.norm().ln() / escape_radius.ln()).ln() / f64::from(exponent).ln());
+                    // more colors to reduce banding
+                    let scaled_value = (smoothed_value * palette_scale_factor) as usize;
+                    let color = palette.eval_rational(scaled_value, scaled_max_iterations);
+
+                    pixel = color.as_array();
+                };
+                // index = ((current row * row length) + current column) * 4 to fit r,g,b,a values
+                let index = (x * image_side_length + y) * NUM_COLOR_CHANNELS;
+                img[index] = pixel[0]; // r
+                img[index + 1] = pixel[1]; // g
+                img[index + 2] = pixel[2]; // b
+                img[index + 3] = max_channel_value; // a
+            }
+        }
     } else {
         let mut rect_width = image_side_length;
         let mut rect_height = image_side_length;
         while rect_width > 3 && rect_height > 3 {
             if rect_width >= rect_height {
-                
+                todo!()
             }
         }
     }
