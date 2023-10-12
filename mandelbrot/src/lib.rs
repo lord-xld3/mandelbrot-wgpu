@@ -4,6 +4,7 @@ mod utils;
 #[path = "lib_test.rs"]
 mod lib_test;
 
+use std::iter::repeat;
 use itertools_num::linspace;
 use num::complex::Complex64;
 use wasm_bindgen::prelude::*;
@@ -34,23 +35,60 @@ fn get_escape_iterations(
     (iter, z)
 }
 
-fn check_border<I>(
+fn check_row<I>(
     ref_iter: u32,
     range: I,
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-) -> bool 
-where I: Iterator<Item = (f64, f64)>
+    mask: &mut Vec<Vec<u32>>,
+    col: usize,
+) -> bool
+where
+    I: Iterator<Item = (f64, f64)>,
 {
-    for pixel in range {
-        let in_set = get_escape_iterations(pixel.0, pixel.1, max_iterations, escape_radius, exponent).0
-            == ref_iter;
-        if !in_set {
-            return false;
+    let mut in_set = true;
+
+    for (index, pixel) in range.enumerate() {
+        let escape_iterations =
+            get_escape_iterations(pixel.0, pixel.1, max_iterations, escape_radius, exponent).0;
+
+        mask[index][col] = escape_iterations;
+
+        if escape_iterations != ref_iter {
+            in_set = false;
         }
     }
-    true
+
+    in_set
+}
+
+fn check_col<I>(
+    ref_iter: u32,
+    range: I,
+    max_iterations: u32,
+    escape_radius: f64,
+    exponent: u32,
+    mask: &mut Vec<Vec<u32>>,
+    row: usize,
+) -> bool
+where
+    I: Iterator<Item = (f64, f64)>,
+{
+    let mut in_set = true;
+
+    for (index, pixel) in range.enumerate() {
+        let escape_iterations =
+            get_escape_iterations(pixel.0, pixel.1, max_iterations, escape_radius, exponent).0;
+
+        mask[row][index] = escape_iterations;
+
+        if escape_iterations != ref_iter {
+            in_set = false;
+        }
+    }
+
+    in_set
 }
 
 // map leaflet coordinates to complex plane
@@ -74,51 +112,49 @@ pub fn get_tile(
     exponent: u32,
     image_side_length: usize,
 ) -> Vec<u8> {
-    let min_channel_value = 0;
-    let max_channel_value = 255;
     let palette = colorous::TURBO;
     let output_size: usize = image_side_length * image_side_length * NUM_COLOR_CHANNELS;
 
     // Canvas API expects UInt8ClampedArray
     let mut img: Vec<u8> = vec![0; output_size]; // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
+    let mut mask: Vec<Vec<u32>> = vec![vec![0; image_side_length]; image_side_length];
 
     let (re_min, im_min) = map_coordinates(center_x, center_y, z, image_side_length);
     let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, image_side_length);
 
-    let mut re_range = linspace(re_min, re_max, image_side_length);
-    let mut im_range = linspace(im_min, im_max, image_side_length);
+    let re_range = linspace(re_min, re_max, image_side_length);
+    let im_range = linspace(im_min, im_max, image_side_length);
+    let re_range_vec: Vec<f64> = re_range.clone().collect();
+    let im_range_vec: Vec<f64> = im_range.clone().collect();
 
     let palette_scale_factor = 20.0;
     let scaled_max_iterations = (max_iterations * palette_scale_factor as u32) as usize;
-    let rgb_black = [min_channel_value; 3];
-    let rgba_black = [min_channel_value, min_channel_value, min_channel_value, max_channel_value];
 
     // radius has to be >=3 for color smoothing
     let escape_radius = 3.0;
 
     // Clone the ranges to get the top-left pixel as a reference
     let (ref_iter, ref_complex) = get_escape_iterations(
-        re_range.clone().next().unwrap(),
-        im_range.clone().next().unwrap(),
+        re_range_vec[0],
+        im_range_vec[0],
         max_iterations,
         escape_radius,
         exponent,
     );
 
-    let borders: Vec<Box<dyn Iterator<Item = (f64, f64)>>> = vec![
-        Box::new(re_range.clone().zip(im_range.clone().cycle().take(1))), // Top
-        Box::new(re_range.clone().zip(im_range.clone().rev().cycle().take(1))), // Bottom
-        Box::new(re_range.clone().cycle().take(1).zip(im_range.clone())), // Left
-        Box::new(re_range.clone().rev().cycle().take(1).zip(im_range.clone())), //Right
-    ];
+    let top_result = check_row(ref_iter, re_range.clone().zip(repeat(im_range_vec[0])), max_iterations, escape_radius, exponent, &mut mask, 0);
+    
+    let bottom_result = check_row(ref_iter, re_range.clone().zip(repeat(im_range_vec[im_range.len() - 1])), max_iterations, escape_radius, exponent, &mut mask, im_range.len() - 1);
+    
+    let left_result = check_col(ref_iter, repeat(re_range_vec[0]).zip(im_range.clone()), max_iterations, escape_radius, exponent, &mut mask, 0);
+    
+    let right_result = check_col(ref_iter, repeat(re_range_vec[re_range.len() - 1]).zip(im_range.clone()), max_iterations, escape_radius, exponent, &mut mask, re_range.len() - 1);
 
-    let all_true = borders.into_iter().all(|border| {
-        check_border(ref_iter, border, max_iterations, escape_radius, exponent)
-    });
+    let all_true = top_result && bottom_result && left_result && right_result;
 
     if all_true {
-        for (x, im) in im_range.enumerate() {
-            for (y, re) in re_range.clone().enumerate() {
+        for (x, _im) in im_range.enumerate() {
+            for (y, _re) in re_range.clone().enumerate() {
                 let pixel:[u8; 3];
                 {
                     // See: https://www.iquilezles.org/www/articles/mset_smooth/mset_smooth.htm
@@ -135,15 +171,20 @@ pub fn get_tile(
                 img[index] = pixel[0]; // r
                 img[index + 1] = pixel[1]; // g
                 img[index + 2] = pixel[2]; // b
-                img[index + 3] = max_channel_value; // a
+                img[index + 3] = 255; // a
             }
         }
     } else {
         let mut rect_width = image_side_length;
         let mut rect_height = image_side_length;
-        while rect_width > 3 && rect_height > 3 {
+        while rect_width > 6 && rect_height > 6 {  
             if rect_width >= rect_height {
-                todo!()
+                rect_width /= 2;
+                // Check along the horizontal split
+                let result = check_row(ref_iter, re_range.clone().zip(repeat(im_range_vec[rect_width])), max_iterations, escape_radius, exponent, &mut mask, rect_width);
+        
+            } else {
+                rect_height /= 2;
             }
         }
     }
