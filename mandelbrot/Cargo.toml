@@ -33,6 +33,7 @@ console_error_panic_hook = { version = "0.1.6", optional = true } #latest 2020-1
 wee_alloc = { version = "0.4.5", optional = true } #latest 2020-11-20
 
 web-sys = { version = "0.3", features = ["console"] } #latest 2020-11-20
+num-traits = "0.2.17"
 
 [features]
 default = ["console_error_panic_hook"]

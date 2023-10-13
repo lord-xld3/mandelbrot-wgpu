@@ -4,7 +4,9 @@ mod utils;
 #[path = "lib_test.rs"]
 mod lib_test;
 
-use itertools_num::linspace;
+use num_traits::Float;
+use std::boxed::Box;
+use itertools_num::{linspace, Linspace};
 use num::complex::Complex64;
 use wasm_bindgen::prelude::*;
 
@@ -12,6 +14,19 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+trait IntoBoxedSlice<F: Float> {
+    fn into_boxed_slice(self) -> Box<[F]>;
+}
+
+impl<F> IntoBoxedSlice<F> for Linspace<F>
+    where
+        F: Float,
+    {
+        fn into_boxed_slice(self) -> Box<[F]> {
+            self.collect::<Vec<F>>().into_boxed_slice()
+        }
+    }
 
 // how many iterations does it take to escape?
 fn get_escape_iterations(
@@ -36,12 +51,12 @@ fn get_escape_iterations(
 
 fn check_range(
     ref_iter: u32,
-    re_range: &Vec<f64>,
-    im_range: &Vec<f64>,
+    re_range: &Box<[f64]>,
+    im_range: &Box<[f64]>,
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-    mask: &mut Vec<Vec<(u32, Complex64)>>,
+    mask: &mut Box<[Box<[(u32, num::Complex<f64>)]>]>,
 ) -> bool {
     let mut all_same = true;
 
@@ -78,19 +93,25 @@ pub fn get_tile(
     max_iterations: u32,
     exponent: u32,
     image_side_length: usize,
-) -> Vec<u8> {
+) -> Box<[u8]> {
     let palette = colorous::TURBO;
     let output_size: usize = image_side_length * image_side_length * NUM_COLOR_CHANNELS;
 
     // Canvas API expects UInt8ClampedArray
-    let mut img: Vec<u8> = vec![0; output_size]; // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
-    let mut mask: Vec<Vec<(u32, Complex64)>> = vec![vec![(0, Complex64::new(0.0, 0.0)); image_side_length]; image_side_length];
+    let mut img: Box<[u8]> = vec![0; output_size].into_boxed_slice(); // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
+    let mut mask: Box<[Box<[(u32, num::Complex<f64>)]>]> = 
+    vec![
+        vec![
+            (0, Complex64::new(0.0, 0.0)); image_side_length
+        ].into_boxed_slice();
+        image_side_length // Inner vec * image_side_length
+    ].into_boxed_slice();
 
     let (re_min, im_min) = map_coordinates(center_x, center_y, z, image_side_length);
     let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, image_side_length);
 
-    let re_range: Vec<f64> = linspace(re_min, re_max, image_side_length).collect();
-    let im_range: Vec<f64> = linspace(im_min, im_max, image_side_length).collect();
+    let re_range = linspace(re_min, re_max, image_side_length).into_boxed_slice();
+    let im_range = linspace(im_min, im_max, image_side_length).into_boxed_slice();
 
     let palette_scale_factor = 20.0;
     let scaled_max_iterations = (max_iterations * palette_scale_factor as u32) as usize;
@@ -108,10 +129,10 @@ pub fn get_tile(
     );
     
     let all_true = {
-        let im_start = vec![im_range[0]];
-        let im_end = vec![im_range[im_range.len() - 1]];
-        let re_start = vec![re_range[0]];
-        let re_end = vec![re_range[re_range.len() - 1]];
+        let im_start: Box<[f64]> = Box::new([im_range[0]]);
+        let im_end: Box<[f64]> = Box::new([im_range[im_range.len() - 1]]);
+        let re_start: Box<[f64]> = Box::new([re_range[0]]);
+        let re_end: Box<[f64]> = Box::new([re_range[re_range.len() - 1]]);
     
         let result = {
             
@@ -124,7 +145,7 @@ pub fn get_tile(
             check_closure(&re_start, &im_range) && // left
             check_closure(&re_end, &im_range)      // right
         };
-        
+
         result
     };
     
