@@ -4,9 +4,7 @@ mod utils;
 #[path = "lib_test.rs"]
 mod lib_test;
 
-use num_traits::Float;
-use std::boxed::Box;
-use itertools_num::{linspace, Linspace};
+use itertools_num::linspace;
 use num::complex::Complex64;
 use wasm_bindgen::prelude::*;
 
@@ -14,19 +12,6 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-trait IntoBoxedSlice<F: Float> {
-    fn into_boxed_slice(self) -> Box<[F]>;
-}
-
-impl<F> IntoBoxedSlice<F> for Linspace<F>
-    where
-        F: Float,
-    {
-        fn into_boxed_slice(self) -> Box<[F]> {
-            self.collect::<Vec<F>>().into_boxed_slice()
-        }
-    }
 
 // how many iterations does it take to escape?
 fn get_escape_iterations(
@@ -110,8 +95,8 @@ pub fn get_tile(
     let (re_min, im_min) = map_coordinates(center_x, center_y, z, image_side_length);
     let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, image_side_length);
 
-    let re_range = linspace(re_min, re_max, image_side_length).into_boxed_slice();
-    let im_range = linspace(im_min, im_max, image_side_length).into_boxed_slice();
+    let re_range = linspace(re_min, re_max, image_side_length).collect::<Box<_>>();
+    let im_range = linspace(im_min, im_max, image_side_length).collect::<Box<_>>();
 
     let palette_scale_factor = 20.0;
     let scaled_max_iterations = (max_iterations * palette_scale_factor as u32) as usize;
