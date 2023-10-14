@@ -59,6 +59,22 @@ fn check_range(
     all_same
 }
 
+fn parallelize_escape_iterations(
+    re_range: &[f64],
+    im_range: &[f64],
+    max_iterations: u32,
+    escape_radius: f64,
+    exponent: u32,
+) -> Box<[Box<[(u32, num::Complex<f64>)]>]> {
+    re_range.par_iter()
+        .map(|x| {
+            im_range.par_iter()
+                .map(|y| get_escape_iterations(x, y, max_iterations, escape_radius, exponent))
+                .collect::<Box<_>>()
+        })
+        .collect::<Box<_>>()
+}
+
 // map leaflet coordinates to complex plane
 fn map_coordinates(x: f64, y: f64, z: f64, tile_size: usize) -> (f64, f64) {
     let scale_factor = tile_size as f64 / 128.5;
@@ -114,29 +130,25 @@ pub fn get_tile(
         exponent,
     );
     
-    let all_true = {
+    let all_same = {
+        
         let im_start: Box<[f64]> = Box::new([im_range[0]]);
         let im_end: Box<[f64]> = Box::new([im_range[im_range.len() - 1]]);
         let re_start: Box<[f64]> = Box::new([re_range[0]]);
         let re_end: Box<[f64]> = Box::new([re_range[re_range.len() - 1]]);
-    
-        let result = {
-            
-            let mut check_closure = |x, y| {
-                check_range(ref_iter, x, y, max_iterations, escape_radius, exponent, &mut mask)
-            };
-    
-            check_closure(&re_range, &im_start) && // top
-            check_closure(&re_range, &im_end) &&   // bottom
-            check_closure(&re_start, &im_range) && // left
-            check_closure(&re_end, &im_range)      // right
-        };
 
-        result
+        let mut check_closure = |x, y| {
+            check_range(ref_iter, x, y, max_iterations, escape_radius, exponent, &mut mask)
+        };
+    
+        check_closure(&re_range, &im_start)&& // top
+        check_closure(&re_range, &im_end)&&   // bottom
+        check_closure(&re_start, &im_range)&& // left
+        check_closure(&re_end, &im_range)     // right
     };
     
 
-    if all_true {
+    if all_same {
         // Parallelize the loop using Rayon
         img.par_chunks_exact_mut(NUM_COLOR_CHANNELS)
             .enumerate()
