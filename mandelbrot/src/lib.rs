@@ -96,8 +96,15 @@ pub fn get_tile(
     exponent: u32,
     image_side_length: usize,
 ) -> Box<[u8]> {
-    let palette = colorous::TURBO;
+    
+    const PALETTE: colorous::Gradient = colorous::TURBO;
+    const PALETTE_SCALE_FACTOR: f64 = 20.0;
+    
+    // radius should be >= 3.0 for smoothed coloring
+    const ESCAPE_RADIUS: f64 = 3.0;
+    
     let output_size: usize = image_side_length * image_side_length * NUM_COLOR_CHANNELS;
+    let scaled_max_iterations: usize = (max_iterations * PALETTE_SCALE_FACTOR as u32) as usize;
 
     // Canvas API expects UInt8ClampedArray
     let mut img: Box<[u8]> = vec![0; output_size].into_boxed_slice(); // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
@@ -114,19 +121,13 @@ pub fn get_tile(
 
     let re_range = linspace(re_min, re_max, image_side_length).collect::<Box<_>>();
     let im_range = linspace(im_min, im_max, image_side_length).collect::<Box<_>>();
-
-    let palette_scale_factor = 20.0;
-    let scaled_max_iterations = (max_iterations * palette_scale_factor as u32) as usize;
-
-    // radius has to be >=3 for color smoothing
-    let escape_radius = 3.0;
-
+    
     // Get the top-left pixel as a reference
     let (ref_iter, ref_complex) = get_escape_iterations(
         &re_range[0],
         &im_range[0],
         max_iterations,
-        escape_radius,
+        ESCAPE_RADIUS,
         exponent,
     );
     
@@ -138,7 +139,7 @@ pub fn get_tile(
         let re_end: Box<[f64]> = Box::new([re_range[re_range.len() - 1]]);
 
         let mut check_closure = |x, y| {
-            check_range(ref_iter, x, y, max_iterations, escape_radius, exponent, &mut mask)
+            check_range(ref_iter, x, y, max_iterations, ESCAPE_RADIUS, exponent, &mut mask)
         };
     
         check_closure(&re_range, &im_start)&& // top
@@ -154,10 +155,10 @@ pub fn get_tile(
             .enumerate()
             .for_each(|(_index, pixel)| {
                 let smoothed_value = f64::from(ref_iter)
-                    - ((ref_complex.norm().ln() / escape_radius.ln()).ln()
+                    - ((ref_complex.norm().ln() / ESCAPE_RADIUS.ln()).ln()
                         / f64::from(exponent).ln());
-                let scaled_value = (smoothed_value * palette_scale_factor) as usize;
-                let color = palette.eval_rational(scaled_value, scaled_max_iterations);
+                let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
+                let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
 
                 // Unpack the array and extract the color values into the pixel array
                 let [r, g, b] = color.as_array();
