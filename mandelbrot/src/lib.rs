@@ -1,17 +1,15 @@
-mod utils;
-
 #[cfg(test)]
-#[path = "lib_test.rs"]
-mod lib_test;
-
-use itertools_num::linspace;
-use num::complex::Complex64;
-use wasm_bindgen::prelude::*;
+use std::time::Instant;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator.
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+mod utils;
+use itertools_num::linspace;
+use num::complex::Complex64;
+use wasm_bindgen::prelude::*;
 
 // how many iterations does it take to escape?
 fn get_escape_iterations(
@@ -176,4 +174,14 @@ pub fn get_tile(
 #[wasm_bindgen]
 pub fn init() {
     utils::init();
+}
+
+#[test]
+fn avg_runtime(){
+    let run_iterations: u32 = 20;
+    let start = Instant::now();
+    for _ in 0..run_iterations {
+        let _ = get_tile(0.0, 0.0, 1.0, 2000, 2, 2000);
+    }
+    println!("Average runtime: {:?}", start.elapsed() / run_iterations);
 }
