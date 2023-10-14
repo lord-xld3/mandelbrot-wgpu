@@ -1,5 +1,5 @@
 #[cfg(test)]
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator.
 #[cfg(feature = "wee_alloc")]
@@ -178,10 +178,14 @@ pub fn init() {
 
 #[test]
 fn avg_runtime(){
-    let run_iterations: u32 = 20;
-    let start = Instant::now();
-    for _ in 0..run_iterations {
+    const RUN_ITERATIONS: usize = 1000;
+    let mut durations: [Duration; RUN_ITERATIONS] = [Duration::ZERO; RUN_ITERATIONS];
+    
+    for index in 0..RUN_ITERATIONS {
+        let start = Instant::now();
         let _ = get_tile(0.0, 0.0, 1.0, 2000, 2, 2000);
+        println!("Iteration {} complete in {:?}", index, start.elapsed());
+        durations[index as usize] = start.elapsed();
     }
-    println!("Average runtime: {:?}", start.elapsed() / run_iterations);
+    println!("Min: {:?}ms, Avg: {:?}ms, Max: {:?}ms", durations.iter().min().unwrap(), durations.iter().sum::<Duration>() / RUN_ITERATIONS as u32, durations.iter().max().unwrap());
 }
