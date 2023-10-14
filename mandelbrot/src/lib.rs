@@ -7,9 +7,12 @@ use std::time::Instant;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 mod utils;
+use wasm_bindgen::prelude::*;
+
+use rayon::prelude::*;
 use itertools_num::linspace;
 use num::complex::Complex64;
-use wasm_bindgen::prelude::*;
+
 
 // how many iterations does it take to escape?
 fn get_escape_iterations(
@@ -134,38 +137,23 @@ pub fn get_tile(
     
 
     if all_true {
-        for (x, _im) in im_range.iter().enumerate() {
-            for (y, _re) in re_range.iter().enumerate() {
-                let pixel:[u8; 3];
-                {
-                    // See: https://www.iquilezles.org/www/articles/mset_smooth/mset_smooth.htm
-                    let smoothed_value = f64::from(ref_iter)
-                        - ((ref_complex.norm().ln() / escape_radius.ln()).ln() / f64::from(exponent).ln());
-                    // more colors to reduce banding
-                    let scaled_value = (smoothed_value * palette_scale_factor) as usize;
-                    let color = palette.eval_rational(scaled_value, scaled_max_iterations);
+        // Parallelize the loop using Rayon
+        img.par_chunks_exact_mut(NUM_COLOR_CHANNELS)
+            .enumerate()
+            .for_each(|(_index, pixel)| {
+                let smoothed_value = f64::from(ref_iter)
+                    - ((ref_complex.norm().ln() / escape_radius.ln()).ln()
+                        / f64::from(exponent).ln());
+                let scaled_value = (smoothed_value * palette_scale_factor) as usize;
+                let color = palette.eval_rational(scaled_value, scaled_max_iterations);
 
-                    pixel = color.as_array();
-                };
-                // index = ((current row * row length) + current column) * 4 to fit r,g,b,a values
-                let index = (x * image_side_length + y) * NUM_COLOR_CHANNELS;
-                img[index] = pixel[0]; // r
-                img[index + 1] = pixel[1]; // g
-                img[index + 2] = pixel[2]; // b
-                img[index + 3] = 255; // a
-            }
-        }
-    } else {
-        // The entire tile is not the same color as ref_iter
-        // So we need to recursively sub-divide the tile in half
-        // On each division...
-        // If each rectangle is < 3 in width or height, check unvisited pixels and return that part of the image
-        // Else, divide it in half horizontally or vertically, comparing width >= height
-            // Then, get a new reference pixel from the top-left of each new rectangle
-            // Then, check along the division row/column
-            // If this is the same color as the reference pixel, check the rest of the borders using the mask
-                // If the entire border is the same color, fill the rectangle with that color
-            // Else, divide the rectangle in half again
+                // Unpack the array and extract the color values into the pixel array
+                let [r, g, b] = color.as_array();
+                pixel[0] = r;
+                pixel[1] = g;
+                pixel[2] = b;
+                pixel[3] = 255;
+            });
     }
 
     img
