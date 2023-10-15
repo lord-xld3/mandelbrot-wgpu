@@ -42,14 +42,14 @@ fn check_range(
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-    mask: &mut Box<[Box<[(u32, num::Complex<f64>)]>]>,
+    mask: &mut Box<[Box<[(u32, f64)]>]>,
 ) -> bool {
     let mut all_same = true;
 
     for (i, x) in re_range.iter().enumerate() {
         for (j, y) in im_range.iter().enumerate() {
             let (iter, complex) = get_escape_iterations(x, y, max_iterations, escape_radius, exponent);
-            mask[i][j] = (iter, complex);
+            mask[i][j] = (iter, complex.norm());
 
             if iter != ref_iter {
                 all_same = false;
@@ -108,10 +108,10 @@ pub fn get_tile(
 
     // Canvas API expects UInt8ClampedArray
     let mut img: Box<[u8]> = vec![0; output_size].into_boxed_slice(); // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
-    let mut mask: Box<[Box<[(u32, num::Complex<f64>)]>]> = 
+    let mut mask: Box<[Box<[(u32, f64)]>]> = 
     vec![
         vec![
-            (0, Complex64::new(0.0, 0.0)); image_side_length
+            (0, 0.0); image_side_length
         ].into_boxed_slice();
         image_side_length // Inner vec * image_side_length
     ].into_boxed_slice();
@@ -123,7 +123,7 @@ pub fn get_tile(
     let im_range = linspace(im_min, im_max, image_side_length).collect::<Box<_>>();
     
     // Get the top-left pixel as a reference
-    let (ref_iter, ref_complex) = get_escape_iterations(
+    let (ref_iter, _) = get_escape_iterations(
         &re_range[0],
         &im_range[0],
         max_iterations,
@@ -150,23 +150,36 @@ pub fn get_tile(
     
 
     if all_same {
-        // Parallelize the loop using Rayon
-        img.par_chunks_exact_mut(NUM_COLOR_CHANNELS)
-            .enumerate()
-            .for_each(|(_index, pixel)| {
+        // Fill the mask excluding the borders by interpolating the f64 values from the borders
+        for i in 1..image_side_length-1 {
+            let row = linspace(mask[i][0].1, mask[i][image_side_length-1].1, image_side_length).collect::<Box<_>>();
+            for j in 1..image_side_length-1 {
+                mask[i][j].1 = row[j];
+            }
+        };
+
+        for i in 0..image_side_length {
+            for j in 0..image_side_length {
+                // Access the float from the mask
+                let mask_float = mask[i][j].1;
+        
+                // Calculate the smoothed value
                 let smoothed_value = f64::from(ref_iter)
-                    - ((ref_complex.norm().ln() / ESCAPE_RADIUS.ln()).ln()
+                    - ((mask_float.ln() / ESCAPE_RADIUS.ln()).ln()
                         / f64::from(exponent).ln());
+        
+                // Scale the smoothed value and get the color
                 let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
                 let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
-
-                // Unpack the array and extract the color values into the pixel array
+        
+                // Unpack the array and assign color values to the corresponding pixel in img
                 let [r, g, b] = color.as_array();
-                pixel[0] = r;
-                pixel[1] = g;
-                pixel[2] = b;
-                pixel[3] = 255;
-            });
+                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS] = r;
+                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 1] = g;
+                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 2] = b;
+                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 3] = 255;
+            }
+        }
     }
 
     img
