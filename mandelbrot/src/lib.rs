@@ -9,6 +9,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 mod utils;
 use wasm_bindgen::prelude::*;
 
+use std::ops::Range;
 use rayon::prelude::*;
 use itertools_num::linspace;
 use num::complex::Complex64;
@@ -21,7 +22,7 @@ fn get_escape_iterations(
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-) -> (u32, Complex64) {
+) -> (u32, f64) {
     let c: Complex64 = Complex64::new(*x, *y);
     let mut z: Complex64 = c;
 
@@ -32,47 +33,30 @@ fn get_escape_iterations(
         z = z.powu(exponent) + c;
     }
 
-    (iter, z)
+    (iter, z.norm())
 }
 
 fn check_range(
-    ref_iter: u32,
     re_range: &Box<[f64]>,
     im_range: &Box<[f64]>,
+    row_range: &Range<usize>,
+    col_range: &Range<usize>,
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
     mask: &mut Box<[Box<[(u32, f64)]>]>,
-) -> bool {
-    let mut all_same = true;
-
-    for (i, x) in re_range.iter().enumerate() {
-        for (j, y) in im_range.iter().enumerate() {
-            let (iter, complex) = get_escape_iterations(x, y, max_iterations, escape_radius, exponent);
-            mask[i][j] = (iter, complex.norm());
-
-            if iter != ref_iter {
-                all_same = false;
-            }
+) {
+    for i in row_range.clone() {
+        for j in col_range.clone() {
+            mask[i][j] = get_escape_iterations(
+                &re_range[i],
+                &im_range[j],
+                max_iterations,
+                escape_radius,
+                exponent,
+            );
         }
     }
-    all_same
-}
-
-fn parallelize_escape_iterations(
-    re_range: &[f64],
-    im_range: &[f64],
-    max_iterations: u32,
-    escape_radius: f64,
-    exponent: u32,
-) -> Box<[Box<[(u32, num::Complex<f64>)]>]> {
-    re_range.par_iter()
-        .map(|x| {
-            im_range.par_iter()
-                .map(|y| get_escape_iterations(x, y, max_iterations, escape_radius, exponent))
-                .collect::<Box<_>>()
-        })
-        .collect::<Box<_>>()
 }
 
 // map leaflet coordinates to complex plane
@@ -94,7 +78,7 @@ pub fn get_tile(
     z: f64,
     max_iterations: u32,
     exponent: u32,
-    image_side_length: usize,
+    tile_len: usize,
 ) -> Box<[u8]> {
     
     const PALETTE: colorous::Gradient = colorous::TURBO;
@@ -103,7 +87,7 @@ pub fn get_tile(
     // radius should be >= 3.0 for smoothed coloring
     const ESCAPE_RADIUS: f64 = 3.0;
     
-    let output_size: usize = image_side_length * image_side_length * NUM_COLOR_CHANNELS;
+    let output_size: usize = tile_len * tile_len * NUM_COLOR_CHANNELS;
     let scaled_max_iterations: usize = (max_iterations * PALETTE_SCALE_FACTOR as u32) as usize;
 
     // Canvas API expects UInt8ClampedArray
@@ -111,75 +95,81 @@ pub fn get_tile(
     let mut mask: Box<[Box<[(u32, f64)]>]> = 
     vec![
         vec![
-            (0, 0.0); image_side_length
+            (0, 0.0); tile_len
         ].into_boxed_slice();
-        image_side_length // Inner vec * image_side_length
+        tile_len // Inner vec * tile_len
     ].into_boxed_slice();
 
-    let (re_min, im_min) = map_coordinates(center_x, center_y, z, image_side_length);
-    let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, image_side_length);
+    let (re_min, im_min) = map_coordinates(center_x, center_y, z, tile_len);
+    let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, tile_len);
 
-    let re_range = linspace(re_min, re_max, image_side_length).collect::<Box<_>>();
-    let im_range = linspace(im_min, im_max, image_side_length).collect::<Box<_>>();
+    let re_range = linspace(re_min, re_max, tile_len).collect::<Box<_>>();
+    let im_range = linspace(im_min, im_max, tile_len).collect::<Box<_>>();
     
     // Get the top-left pixel as a reference
-    let (ref_iter, _) = get_escape_iterations(
+    mask[0][0] = get_escape_iterations(
         &re_range[0],
         &im_range[0],
         max_iterations,
         ESCAPE_RADIUS,
         exponent,
     );
-    
-    let all_same = {
-        
-        let im_start: Box<[f64]> = Box::new([im_range[0]]);
-        let im_end: Box<[f64]> = Box::new([im_range[im_range.len() - 1]]);
-        let re_start: Box<[f64]> = Box::new([re_range[0]]);
-        let re_end: Box<[f64]> = Box::new([re_range[re_range.len() - 1]]);
 
-        let mut check_closure = |x, y| {
-            check_range(ref_iter, x, y, max_iterations, ESCAPE_RADIUS, exponent, &mut mask)
-        };
-    
-        check_closure(&re_range, &im_start)&& // top
-        check_closure(&re_range, &im_end)&&   // bottom
-        check_closure(&re_start, &im_range)&& // left
-        check_closure(&re_end, &im_range)     // right
+    let mut check_closure = |row_range: Range<usize>, col_range: Range<usize>| {
+        check_range(
+            &re_range,
+            &im_range,
+            &row_range,
+            &col_range,
+            max_iterations,
+            ESCAPE_RADIUS,
+            exponent,
+            &mut mask,
+        );
     };
-    
 
-    if all_same {
-        // Fill the mask excluding the borders by interpolating the f64 values from the borders
-        for i in 1..image_side_length-1 {
-            let row = linspace(mask[i][0].1, mask[i][image_side_length-1].1, image_side_length).collect::<Box<_>>();
-            for j in 1..image_side_length-1 {
-                mask[i][j].1 = row[j];
+    check_closure(1..tile_len, 0..1); // top
+    check_closure(1..tile_len, tile_len - 1..tile_len); // bottom
+    check_closure(0..1, 1..tile_len); // left
+    check_closure(tile_len - 1..tile_len, 1..tile_len); // right
+
+    //TODO: Check if the borders of the mask all have the same amount of iterations
+ 
+    if true {
+        if mask[0][0].0 == max_iterations {
+            for i in 0..tile_len {
+                for j in 0..tile_len {
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS] = 0;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 1] = 0;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 2] = 0;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 3] = 255;
+                }
             }
-        };
+        } else {
+            // TODO: Fill the mask excluding the borders by interpolating the f64 values from the borders
 
-        for i in 0..image_side_length {
-            for j in 0..image_side_length {
-                // Access the float from the mask
-                let mask_float = mask[i][j].1;
-        
-                // Calculate the smoothed value
-                let smoothed_value = f64::from(ref_iter)
-                    - ((mask_float.ln() / ESCAPE_RADIUS.ln()).ln()
-                        / f64::from(exponent).ln());
-        
-                // Scale the smoothed value and get the color
-                let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
-                let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
-        
-                // Unpack the array and assign color values to the corresponding pixel in img
-                let [r, g, b] = color.as_array();
-                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS] = r;
-                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 1] = g;
-                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 2] = b;
-                img[(i * image_side_length + j) * NUM_COLOR_CHANNELS + 3] = 255;
+            for i in 0..tile_len {
+                for j in 0..tile_len {
+                    // Calculate the smoothed value
+                    let smoothed_value = f64::from(mask[i][j].0)
+                        - ((mask[i][j].1.ln() / ESCAPE_RADIUS.ln()).ln()
+                            / f64::from(exponent).ln());
+            
+                    // Scale the smoothed value and get the color
+                    let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
+                    let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
+            
+                    // Unpack the array and assign color values to the corresponding pixel in img
+                    let [r, g, b] = color.as_array();
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS] = r;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 1] = g;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 2] = b;
+                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 3] = 255;
+                }
             }
         }
+    } else {
+        // TODO: Recursively sub-divide the tile until the borders are all the same amount of iterations
     }
 
     img
