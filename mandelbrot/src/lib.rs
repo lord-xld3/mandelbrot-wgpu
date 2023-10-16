@@ -146,7 +146,14 @@ pub fn get_tile(
                 }
             }
         } else {
-            // TODO: Fill the mask excluding the borders by interpolating the f64 values from the borders
+            // Fill the mask excluding the borders by interpolating the f64 values from the borders
+            for i in 1..tile_len-1 {
+                let row = linspace(mask[i][0].1, mask[i][tile_len-1].1, tile_len-2).collect::<Box<_>>();
+                for j in 1..tile_len-1 {
+                    mask[i][j].0 = mask[0][0].0;
+                    mask[i][j].1 = row[j - 1];
+                }
+            }
 
             for i in 0..tile_len {
                 for j in 0..tile_len {
@@ -181,7 +188,7 @@ pub fn init() {
 }
 
 #[test]
-fn avg_runtime(){
+fn avg_runtime() {
     const RUN_ITERATIONS: usize = 1000;
     let mut durations: [Duration; RUN_ITERATIONS] = [Duration::ZERO; RUN_ITERATIONS];
     
