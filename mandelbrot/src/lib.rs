@@ -14,6 +14,11 @@ use rayon::prelude::*;
 use itertools_num::linspace;
 use num::complex::Complex64;
 
+// radius should be >= 3.0 for smoothed coloring
+const ESCAPE_RADIUS: f64 = 3.0;
+const NUM_COLOR_CHANNELS: usize = 4;
+const PALETTE: colorous::Gradient = colorous::TURBO;
+const PALETTE_SCALE_FACTOR: f64 = 20.0;
 
 // how many iterations does it take to escape?
 fn get_escape_iterations(
@@ -60,6 +65,7 @@ fn check_range(
 }
 
 // map leaflet coordinates to complex plane
+// I have no idea where these "magic" values come from but it works
 fn map_coordinates(x: f64, y: f64, z: f64, tile_size: usize) -> (f64, f64) {
     let scale_factor = tile_size as f64 / 128.5;
     let d: f64 = 2.0f64.powf(z - 2.0);
@@ -68,8 +74,6 @@ fn map_coordinates(x: f64, y: f64, z: f64, tile_size: usize) -> (f64, f64) {
 
     (re, im)
 }
-
-const NUM_COLOR_CHANNELS: usize = 4;
 
 #[wasm_bindgen]
 pub fn get_tile(
@@ -80,12 +84,6 @@ pub fn get_tile(
     exponent: u32,
     tile_len: usize,
 ) -> Box<[u8]> {
-    
-    const PALETTE: colorous::Gradient = colorous::TURBO;
-    const PALETTE_SCALE_FACTOR: f64 = 20.0;
-    
-    // radius should be >= 3.0 for smoothed coloring
-    const ESCAPE_RADIUS: f64 = 3.0;
     
     let output_size: usize = tile_len * tile_len * NUM_COLOR_CHANNELS;
     let scaled_max_iterations: usize = (max_iterations * PALETTE_SCALE_FACTOR as u32) as usize;
@@ -148,7 +146,9 @@ pub fn get_tile(
         } else {
             // Fill the mask excluding the borders by interpolating the f64 values from the borders
             for i in 1..tile_len-1 {
-                let row = linspace(mask[i][0].1, mask[i][tile_len-1].1, tile_len-2).collect::<Box<_>>();
+                let row = 
+                    linspace(mask[i][0].1, mask[i][tile_len-1].1, tile_len-2)
+                    .collect::<Box<_>>();
                 for j in 1..tile_len-1 {
                     mask[i][j].0 = mask[0][0].0;
                     mask[i][j].1 = row[j - 1];
@@ -189,7 +189,7 @@ pub fn init() {
 
 #[test]
 fn avg_runtime() {
-    const RUN_ITERATIONS: usize = 1000;
+    const RUN_ITERATIONS: usize = 100;
     let mut durations: [Duration; RUN_ITERATIONS] = [Duration::ZERO; RUN_ITERATIONS];
     
     for index in 0..RUN_ITERATIONS {
