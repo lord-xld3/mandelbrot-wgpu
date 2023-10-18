@@ -51,17 +51,21 @@ fn check_range(
     exponent: u32,
     mask: &mut Box<[Box<[(u32, f64)]>]>,
 ) {
-    for i in row_range.clone() {
-        for j in col_range.clone() {
-            mask[i][j] = get_escape_iterations(
-                &re_range[i],
-                &im_range[j],
-                max_iterations,
-                escape_radius,
-                exponent,
-            );
+    mask.par_iter_mut().enumerate().for_each(|(i, row)| {
+        if row_range.contains(&i) {
+            row.par_iter_mut().enumerate().for_each(|(j, pixel)| {
+                if col_range.contains(&j) {
+                    *pixel = get_escape_iterations(
+                        &re_range[j],
+                        &im_range[i],
+                        max_iterations,
+                        escape_radius,
+                        exponent,
+                    );
+                }
+            });
         }
-    }
+    });
 }
 
 // map leaflet coordinates to complex plane
