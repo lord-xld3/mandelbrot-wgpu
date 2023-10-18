@@ -49,7 +49,7 @@ fn check_range(
     max_iterations: u32,
     escape_radius: f64,
     exponent: u32,
-    mask: &mut Box<[Box<[(u32, f64)]>]>,
+    mask: &mut Vec<Vec<(u32, f64)>>,
 ) {
     mask.par_iter_mut().enumerate().for_each(|(i, row)| {
         if row_range.contains(&i) {
@@ -87,20 +87,18 @@ pub fn get_tile(
     max_iterations: u32,
     exponent: u32,
     tile_len: usize,
-) -> Box<[u8]> {
+) -> Vec<u8> {
     
     let output_size: usize = tile_len * tile_len * NUM_COLOR_CHANNELS;
     let scaled_max_iterations: usize = (max_iterations * PALETTE_SCALE_FACTOR as u32) as usize;
 
     // Canvas API expects UInt8ClampedArray
-    let mut img: Box<[u8]> = vec![0; output_size].into_boxed_slice(); // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
-    let mut mask: Box<[Box<[(u32, f64)]>]> = 
+    let mut img: Vec<u8> = vec![0; output_size]; // [ r, g, b, a, r, g, b, a, r, g, b, a... ]
+    let mut mask: Vec<Vec<(u32, f64)>> = 
     vec![
-        vec![
-            (0, 0.0); tile_len
-        ].into_boxed_slice();
+        vec![(0, 0.0); tile_len];
         tile_len // Inner vec * tile_len
-    ].into_boxed_slice();
+    ];
 
     let (re_min, im_min) = map_coordinates(center_x, center_y, z, tile_len);
     let (re_max, im_max) = map_coordinates(center_x + 1.0, center_y + 1.0, z, tile_len);
