@@ -139,6 +139,7 @@ pub fn get_tile(
  
     if true {
         if ref_iter == max_iterations {
+            // Fill the image with black (within mandelbrot set)
             img.par_chunks_mut(NUM_COLOR_CHANNELS)
             .enumerate()
             .for_each(|(_, chunk)| {
@@ -161,6 +162,7 @@ pub fn get_tile(
                 })
             });
 
+            // Build the image from the mask
             img.par_chunks_mut(NUM_COLOR_CHANNELS)
             .enumerate()
             .for_each(|(index, chunk)| {
@@ -203,5 +205,9 @@ fn avg_runtime() {
         println!("Iteration {} complete in {:?}", index, start.elapsed());
         durations[index as usize] = start.elapsed();
     }
-    println!("Min: {:?}ms, Avg: {:?}ms, Max: {:?}ms", durations.iter().min().unwrap(), durations.iter().sum::<Duration>() / RUN_ITERATIONS as u32, durations.iter().max().unwrap());
+    println!("Min: {:?}, Avg: {:?}, Max: {:?}", 
+        durations.iter().min().unwrap(), 
+        durations.iter().sum::<Duration>() / RUN_ITERATIONS as u32, 
+        durations.iter().max().unwrap()
+    );
 }
