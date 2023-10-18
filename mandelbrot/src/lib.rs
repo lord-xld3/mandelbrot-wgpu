@@ -115,6 +115,8 @@ pub fn get_tile(
         exponent,
     );
 
+    let ref_iter: u32 = mask[0][0].0;
+
     let mut check_closure = |row_range: Range<usize>, col_range: Range<usize>| {
         check_range(
             &re_range,
@@ -136,46 +138,47 @@ pub fn get_tile(
     //TODO: Check if the borders of the mask all have the same amount of iterations
  
     if true {
-        if mask[0][0].0 == max_iterations {
-            for i in 0..tile_len {
-                for j in 0..tile_len {
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS] = 0;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 1] = 0;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 2] = 0;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 3] = 255;
-                }
-            }
+        if ref_iter == max_iterations {
+            img.par_chunks_mut(NUM_COLOR_CHANNELS)
+            .enumerate()
+            .for_each(|(_, chunk)| {
+                chunk[0] = 0;
+                chunk[1] = 0;
+                chunk[2] = 0;
+                chunk[3] = 255;
+            });
         } else {
             // Fill the mask excluding the borders by interpolating the f64 values from the borders
-            for i in 1..tile_len-1 {
-                let row = 
-                    linspace(mask[i][0].1, mask[i][tile_len-1].1, tile_len-2)
+            mask.par_iter_mut().skip(1).take(tile_len - 2)
+            .for_each(|row| {
+                let lin_row = 
+                    linspace(row[0].1, row[tile_len - 1].1, tile_len)
                     .collect::<Box<_>>();
-                for j in 1..tile_len-1 {
-                    mask[i][j].0 = mask[0][0].0;
-                    mask[i][j].1 = row[j - 1];
-                }
-            }
+                row.par_iter_mut().enumerate().skip(1).take(tile_len - 2)
+                .for_each(|(j, col)| {
+                    col.0 = ref_iter;
+                    col.1 = lin_row[j];
+                })
+            });
 
-            for i in 0..tile_len {
-                for j in 0..tile_len {
-                    // Calculate the smoothed value
-                    let smoothed_value = f64::from(mask[i][j].0)
-                        - ((mask[i][j].1.ln() / ESCAPE_RADIUS.ln()).ln()
-                            / f64::from(exponent).ln());
-            
-                    // Scale the smoothed value and get the color
-                    let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
-                    let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
-            
-                    // Unpack the array and assign color values to the corresponding pixel in img
-                    let [r, g, b] = color.as_array();
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS] = r;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 1] = g;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 2] = b;
-                    img[(i * tile_len + j) * NUM_COLOR_CHANNELS + 3] = 255;
-                }
-            }
+            img.par_chunks_mut(NUM_COLOR_CHANNELS)
+            .enumerate()
+            .for_each(|(index, chunk)| {
+                let i = index / tile_len;
+                let j = index % tile_len;
+
+                let smoothed_value = f64::from(mask[i][j].0)
+                    - ((mask[i][j].1.ln() / ESCAPE_RADIUS.ln()).ln() / f64::from(exponent).ln());
+
+                let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
+                let color = PALETTE.eval_rational(scaled_value, scaled_max_iterations);
+
+                let [r, g, b] = color.as_array();
+                chunk[0] = r;
+                chunk[1] = g;
+                chunk[2] = b;
+                chunk[3] = 255;
+            });
         }
     } else {
         // TODO: Recursively sub-divide the tile until the borders are all the same amount of iterations
