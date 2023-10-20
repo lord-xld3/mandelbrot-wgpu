@@ -115,7 +115,7 @@ pub fn get_tile(
         exponent,
     );
 
-    let ref_iter: u32 = mask[0][0].0;
+    let reference_iterations: u32 = mask[0][0].0;
 
     let mut check_closure = |row_range: Range<usize>, col_range: Range<usize>| {
         check_range(
@@ -138,7 +138,7 @@ pub fn get_tile(
     //TODO: Check if the borders of the mask all have the same amount of iterations
  
     if true {
-        if ref_iter == max_iterations {
+        if reference_iterations == max_iterations {
             // Fill the image with black (within mandelbrot set)
             img.par_chunks_mut(NUM_COLOR_CHANNELS)
             .enumerate()
@@ -157,11 +157,11 @@ pub fn get_tile(
                     .collect::<Box<_>>();
                 row.par_iter_mut().enumerate().skip(1).take(tile_len - 2)
                 .for_each(|(j, col)| {
-                    col.0 = ref_iter;
                     col.1 = lin_row[j];
                 })
             });
-
+            
+            let reference_float = f64::from(reference_iterations);
             // Build the image from the mask
             img.par_chunks_mut(NUM_COLOR_CHANNELS)
             .enumerate()
@@ -169,7 +169,7 @@ pub fn get_tile(
                 let i = index / tile_len;
                 let j = index % tile_len;
 
-                let smoothed_value = f64::from(mask[i][j].0)
+                let smoothed_value = reference_float
                     - ((mask[i][j].1.ln() / ESCAPE_RADIUS.ln()).ln() / f64::from(exponent).ln());
 
                 let scaled_value = (smoothed_value * PALETTE_SCALE_FACTOR) as usize;
